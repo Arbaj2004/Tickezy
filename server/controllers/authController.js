@@ -27,7 +27,16 @@ const createSendToken = (user, statusCode, req, res) => {
     });
     user.password = undefined;
     console.log(user);
-    res.status(statusCode).cookie('token', token, { maxAge: 9000000, httpOnly: true, secure: true, }).json({
+    const prod = process.env.NODE_ENV === 'production';
+    const cookieDomain = process.env.COOKIE_DOMAIN || undefined; // e.g. .yourdomain.com
+    res.status(statusCode).cookie('token', token, {
+        maxAge: 9000000,
+        httpOnly: true,
+        secure: prod,
+        sameSite: prod ? 'none' : 'lax',
+        domain: cookieDomain,
+        path: '/',
+    }).json({
         status: 'success',
         token,
         data: {
@@ -156,7 +165,15 @@ exports.verifyOtp = catchAsync(async (req, res, next) => {
     );
 
     // Send success response
-    res.status(200).clearCookie('token').json({
+    const prod = process.env.NODE_ENV === 'production';
+    const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
+    res.status(200).clearCookie('token', {
+        httpOnly: true,
+        secure: prod,
+        sameSite: prod ? 'none' : 'lax',
+        domain: cookieDomain,
+        path: '/',
+    }).json({
         status: 'success',
         message: 'OTP verified successfully. Account is now active.',
         token: updatedToken,
@@ -392,8 +409,16 @@ exports.updateMe = catchAsync(async (req, res, next) => {
 
 // Clear auth cookie and "logout" the user client-side
 exports.logout = (req, res) => {
+    const prod = process.env.NODE_ENV === 'production';
+    const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
     res
-        .clearCookie('token')
+        .clearCookie('token', {
+            httpOnly: true,
+            secure: prod,
+            sameSite: prod ? 'none' : 'lax',
+            domain: cookieDomain,
+            path: '/',
+        })
         .status(200)
         .json({ status: 'success', message: 'Logged out' });
 };

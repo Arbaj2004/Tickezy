@@ -24,6 +24,8 @@ const errorHandler = require('./utils/errorHandler');
 const pool = require('./config/db');
 
 const app = express();
+// Behind Vercel/Proxies so req.secure and IPs work correctly
+app.set('trust proxy', 1);
 
 // CORS configuration: allow local dev or configured origins in production
 const isProd = process.env.NODE_ENV === 'production';
@@ -43,9 +45,13 @@ const corsOptions = {
         }
         : true,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
 };
 
 app.use(cors(corsOptions));
+// Handle CORS preflight for all routes
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
