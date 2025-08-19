@@ -87,10 +87,8 @@ exports.getShowById = catchAsync(async (req, res, next) => {
             ORDER BY s.show_datetime
         `, [req.params.id]);
 
-        console.log('Show details:', result.rows[0]);
         if (result.rowCount === 0)
             return next(new AppError('Show not found', 404));
-        console.log(result.rows[0]);
         res.status(200).json({ status: 'success', data: result.rows[0] });
     } catch (err) {
         console.error('❌ Error fetching show by ID:', err);
@@ -259,7 +257,6 @@ exports.getMovieDetailsWithShows = catchAsync(async (req, res) => {
             ...movie,
             theatres: theatresList
         };
-        console.log(response);
         res.status(200).json(response);
     } catch (error) {
         console.error('Error fetching movie details:', error);

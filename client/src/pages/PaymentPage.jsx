@@ -91,6 +91,27 @@ const PaymentPage = () => {
     setPaying(true);
     setError('');
     try {
+      // 0) Validate-then-hold seats for the current user before confirming payment
+      const data = session?.data || {};
+      const showId = data.show_id;
+      const seatLabels = (data.seats || []).map(s => String(s).trim().toUpperCase());
+      if (!showId || seatLabels.length === 0) throw new Error('Invalid session data');
+
+      const token0 = localStorage.getItem('token');
+      const headers0 = { 'Content-Type': 'application/json', ...(token0 ? { Authorization: `Bearer ${token0}` } : {}) };
+      const vRes = await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/show-seats/validate-then-hold`, {
+        method: 'POST',
+        headers: headers0,
+        credentials: 'include',
+        body: JSON.stringify({ show_id: showId, seats: seatLabels })
+      });
+      const vCt = vRes.headers.get('content-type') || '';
+      const vJson = vCt.includes('application/json') ? await vRes.json() : null;
+      if (!vRes.ok) {
+        const msg = vJson?.message || (vRes.status === 409 ? 'Seats are no longer available' : 'Failed to validate seats');
+        throw new Error(msg);
+      }
+
       const token = localStorage.getItem('token');
       const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
       const res = await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/payments/confirm`, {
@@ -100,15 +121,15 @@ const PaymentPage = () => {
         body: JSON.stringify({ session_id: sessionId, payment_method: 'dummy' })
       });
       const ct = res.headers.get('content-type') || '';
-      let data = null;
+      let payData = null;
       let text = '';
       if (ct.includes('application/json')) {
-        data = await res.json();
+        payData = await res.json();
       } else {
         text = await res.text();
       }
       if (!res.ok) {
-        const msg = data?.message || text?.trim() || (res.status === 410 ? 'Payment session expired' : res.status === 409 ? 'Seat already booked or hold expired' : res.status === 403 ? 'You don\'t have access to this session' : res.status === 401 ? 'Please sign in again' : 'Payment failed');
+        const msg = payData?.message || text?.trim() || (res.status === 410 ? 'Payment session expired' : res.status === 409 ? 'Seat already booked or hold expired' : res.status === 403 ? 'You don\'t have access to this session' : res.status === 401 ? 'Please sign in again' : 'Payment failed');
         // Try releasing holds best-effort
         try {
           const seatLabels = session?.data?.seats || [];
@@ -125,7 +146,7 @@ const PaymentPage = () => {
         throw new Error(msg);
       }
       // On success, server returns booking row. Redirect to the ticket page.
-      const bookingId = data?.data?.id;
+      const bookingId = payData?.data?.id;
       if (bookingId) {
         navigate(`/ticket/${bookingId}`, { replace: true });
       } else {

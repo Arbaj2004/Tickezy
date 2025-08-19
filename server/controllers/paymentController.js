@@ -14,12 +14,29 @@ exports.createSession = catchAsync(async (req, res, next) => {
         return next(new AppError('Missing required fields', 400));
     }
 
-    // Verify holds belong to this user via single key per hold
+    // First: validate DB availability for precise messaging
+    const labels = seats.map(s => String(s).trim().toUpperCase());
+    const q = await pool.query(
+        `SELECT seat_label, status FROM show_seats WHERE show_id = $1 AND seat_label = ANY($2)`,
+        [show_id, labels]
+    );
+    if (q.rowCount !== labels.length) {
+        return next(new AppError('Some seats do not exist for this show', 404));
+    }
+    const statusMap = new Map(q.rows.map(r => [String(r.seat_label).toUpperCase(), String(r.status).toLowerCase()]));
+    const booked = labels.find(l => statusMap.get(l) === 'booked');
+    if (booked) return next(new AppError(`Seat ${booked} already booked`, 409));
+    const blocked = labels.find(l => statusMap.get(l) === 'blocked');
+    if (blocked) return next(new AppError(`Seat ${blocked} is blocked`, 409));
+    const otherNA = labels.find(l => statusMap.get(l) && statusMap.get(l) !== 'available');
+    if (otherNA) return next(new AppError(`Seat ${otherNA} not available`, 409));
+
+    // Then: require seats to be held by this user before creating a session
     for (const seat of seats) {
         const seatLabel = seat.trim().toUpperCase();
-        const key = `hold:show:${show_id}:${seatLabel}:${user_id}`;
-        const exists = await redis.exists(key);
-        if (!exists) {
+        const holdKey = `hold:show:${show_id}:${seatLabel}`;
+        const owner = await redis.get(holdKey);
+        if (String(owner) !== String(user_id)) {
             return next(new AppError(`Seat ${seatLabel} not held by user or hold expired`, 403));
         }
     }
@@ -67,11 +84,11 @@ exports.confirm = catchAsync(async (req, res, next) => {
     const client = await pool.connect();
 
     try {
-        // Re-verify holds by key existence
+        // Re-verify holds by checking owner
         for (const seat of seats) {
-            const key = `hold:show:${show_id}:${seat}:${user_id}`;
-            const exists = await redis.exists(key);
-            if (!exists) {
+            const holdKey = `hold:show:${show_id}:${seat}`;
+            const owner = await redis.get(holdKey);
+            if (String(owner) !== String(user_id)) {
                 return next(new AppError(`Seat ${seat} not held or hold expired`, 409));
             }
         }
@@ -106,8 +123,11 @@ exports.confirm = catchAsync(async (req, res, next) => {
 
         // Cleanup hold keys
         for (const seat of seats) {
-            const key = `hold:show:${show_id}:${seat}:${user_id}`;
-            await redis.del(key);
+            const holdKey = `hold:show:${show_id}:${seat}`;
+            const owner = await redis.get(holdKey);
+            if (String(owner) === String(user_id)) {
+                await redis.del(holdKey);
+            }
         }
 
         // Delete session
@@ -120,7 +140,8 @@ exports.confirm = catchAsync(async (req, res, next) => {
         // Cleanup holds and session on error
         try {
             for (const seat of (sess?.seats || [])) {
-                const key = `hold:show:${sess.show_id}:${seat}:${user_id}`;
+                const cleanedSeat = seat.replace(/\s+/g, '').toUpperCase();
+                const key = `hold:show:${sess.show_id}:${cleanedSeat}`;
                 await redis.del(key);
             }
             await redis.del(sessionKey);
@@ -152,8 +173,11 @@ exports.cancel = catchAsync(async (req, res, next) => {
 
     // Best-effort delete of hold keys
     for (const seat of seats) {
-        const key = `hold:show:${show_id}:${seat}:${user_id}`;
-        try { await redis.del(key); } catch (_) { }
+        const holdKey = `hold:show:${show_id}:${seat}`;
+        const owner = await redis.get(holdKey);
+        if (String(owner) === String(user_id)) {
+            await redis.del(holdKey);
+        }
     }
 
     // Delete session key

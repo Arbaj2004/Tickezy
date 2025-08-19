@@ -26,7 +26,6 @@ const createSendToken = (user, statusCode, req, res) => {
         expiresIn: process.env.JWT_EXPIRES_IN
     });
     user.password = undefined;
-    console.log(user);
     const prod = process.env.NODE_ENV === 'production';
     const cookieDomain = process.env.COOKIE_DOMAIN || undefined; // e.g. .yourdomain.com
     res.status(statusCode).cookie('token', token, {
@@ -309,7 +308,6 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
 });
 
 exports.protect = catchAsync(async (req, res, next) => {
-    // console.log('Protect middleware called');
     let token;
 
     // 1. Get token from Authorization header or cookies
@@ -370,7 +368,6 @@ exports.restrictTo = (...roles) => {
 
 exports.getMe = catchAsync(async (req, res, next) => {
     const user = req.user;
-    // console.log(user);
     if (!user) {
         return next(new AppError('User not found', 404));
     }

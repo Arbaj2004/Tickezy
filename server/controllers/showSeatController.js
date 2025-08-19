@@ -45,16 +45,12 @@ exports.getSeatsByShow = catchAsync(async (req, res, next) => {
         }
 
         const seats = result.rows;
-        // Single-key per hold (no value); need to detect by SCAN for any user id
-        // Pattern: hold:show:<showId>:<SEAT_LABEL>:*
-        // To avoid many scans, collect seat labels and check existence per seat for any user
-        const seatLabels = seats.map(seat => seat.seat_label.toUpperCase());
-        // For each seat, check if any key exists for this show and seat
+        // Check single hold key per seat: hold:show:<showId>:<SEAT_LABEL> (contains user_id)
         for (let i = 0; i < seats.length; i++) {
-            const label = seatLabels[i];
-            const scanRes = await redis.scan('0', 'MATCH', `hold:show:${showId}:${label}:*`, 'COUNT', 1);
-            const anyKey = scanRes[1] && scanRes[1].length > 0;
-            if (anyKey && seats[i].status === 'available') {
+            const label = String(seats[i].seat_label).toUpperCase();
+            const holdKey = `hold:show:${showId}:${label}`;
+            const exists = await redis.exists(holdKey);
+            if (exists && seats[i].status === 'available') {
                 seats[i].status = 'hold';
             }
         }
@@ -112,14 +108,9 @@ exports.bookSeats = catchAsync(async (req, res, next) => {
                 throw new AppError(`Seat ${cleanedSeat} is already booked`, 400);
             }
 
-            // Remove hold key(s) if present (for any user)
-            let cursor = '0';
-            do {
-                const reply = await redis.scan(cursor, 'MATCH', `hold:show:${show_id}:${cleanedSeat}:*`, 'COUNT', 100);
-                cursor = reply[0];
-                const keys = reply[1];
-                if (keys.length > 0) await redis.del(...keys);
-            } while (cursor !== '0');
+            // Remove hold key if present (single key pattern)
+            const holdKey = `hold:show:${show_id}:${cleanedSeat}`;
+            await redis.del(holdKey);
         }
 
         await client.query('COMMIT');
@@ -143,30 +134,28 @@ exports.bookSeats = catchAsync(async (req, res, next) => {
         for (const lockKey of lockedSeats) await redis.del(lockKey);
     }
 });
-// Get current holds for authenticated user
+// Get current holds for authenticated user (matches key: hold:show:<show_id>:<seat_label>)
 exports.getUserHolds = catchAsync(async (req, res, next) => {
-    // With single-key storage, compute user's holds by scanning (bounded)
     const user_id = String(req.user.id);
     try {
-        let cursor = '0';
+        // Get all shows first
+        const showsResult = await pool.query('SELECT id FROM shows');
         const holds = [];
-        do {
-            const reply = await redis.scan(cursor, 'MATCH', 'hold:show:*:seat:*', 'COUNT', 100);
-            cursor = reply[0];
-            const keys = reply[1];
-            if (keys.length > 0) {
-                const values = await redis.mget(...keys);
-                keys.forEach((key, idx) => {
-                    if (values[idx] === user_id) {
-                        // key format: hold:show:<show_id>:seat:<seat_label>
-                        const parts = key.split(':');
-                        const showId = Number(parts[2]);
-                        const seatLabel = parts[4];
-                        holds.push({ show_id: showId, seat_label: seatLabel });
-                    }
-                });
+
+        // Check each show for seats held by this user
+        for (const show of showsResult.rows) {
+            const seatsResult = await pool.query('SELECT label FROM show_seats WHERE show_id = $1', [show.id]);
+
+            for (const seat of seatsResult.rows) {
+                const cleanedSeat = seat.label.replace(/\s+/g, '').toUpperCase();
+                const holdKey = `hold:show:${show.id}:${cleanedSeat}`;
+
+                const heldByUserId = await redis.get(holdKey);
+                if (heldByUserId === user_id) {
+                    holds.push({ show_id: show.id, seat_label: seat.label });
+                }
             }
-        } while (cursor !== '0' && holds.length < 1000); // guard to avoid huge scans
+        }
 
         const total = holds.length;
         const byShow = holds.reduce((acc, h) => {
@@ -191,23 +180,85 @@ exports.holdSeats = catchAsync(async (req, res, next) => {
     }
 
     try {
-        const createdKeys = [];
+        const createdOrRefreshed = [];
         for (const seat of seats) {
-            const cleanedSeat = seat.trim().toUpperCase();
-            // single unique key per hold: hold:show:<show_id>:<seat_label>:<user_id>
-            const key = `hold:show:${show_id}:${cleanedSeat}:${user_id}`;
-            const res = await redis.set(key, '1', 'NX', 'EX', 300);
-            if (!res) {
-                // if someone else already holds, rollback and error
-                if (createdKeys.length > 0) await redis.del(...createdKeys);
-                return next(new AppError(`Seat ${cleanedSeat} is already held`, 409));
+            const label = seat.trim().toUpperCase();
+            const holdKey = `hold:show:${show_id}:${label}`;
+
+            // Check if seat is already held
+            const currentOwner = await redis.get(holdKey);
+            if (currentOwner && String(currentOwner) !== String(user_id)) {
+                // Seat held by someone else
+                return next(new AppError(`Seat ${label} is already held`, 409));
             }
-            createdKeys.push(key);
+
+            // Set/refresh hold for this user
+            await redis.set(holdKey, String(user_id), 'EX', 300);
+            createdOrRefreshed.push({ seat: label, action: currentOwner ? 'refreshed' : 'created' });
         }
-        res.status(200).json({ status: 'success', message: 'Seats held for 5 minutes', data: seats });
+        res.status(200).json({ status: 'success', message: 'Seats held for 5 minutes', data: createdOrRefreshed });
     } catch (err) {
         console.error('❌ Error holding seats:', err);
         return next(new AppError('Failed to hold seats', 500));
+    }
+});
+
+// Validate then hold: for each seat ensure not booked and either already held by this user (refresh TTL) or acquire hold; fail if held by someone else
+exports.validateThenHold = catchAsync(async (req, res, next) => {
+    const { show_id, seats } = req.body;
+    const user_id = req.user.id;
+
+    if (!show_id || !Array.isArray(seats) || seats.length === 0) {
+        return next(new AppError('Invalid input', 400));
+    }
+
+    try {
+        // 1) Check DB availability for all seats
+        const labels = seats.map(s => String(s).trim().toUpperCase());
+        const q = await pool.query(
+            `SELECT seat_label, status FROM show_seats WHERE show_id = $1 AND seat_label = ANY($2)`,
+            [show_id, labels]
+        );
+        if (q.rowCount !== labels.length) {
+            return next(new AppError('Some seats do not exist for this show', 404));
+        }
+        // Build status map for precise messaging
+        const statusMap = new Map(q.rows.map(r => [String(r.seat_label).toUpperCase(), String(r.status).toLowerCase()]));
+        // If any booked -> fail with exact message
+        const booked = labels.find(l => statusMap.get(l) === 'booked');
+        if (booked) {
+            return res.status(409).json({ status: 'fail', message: `Seat ${booked} already booked` });
+        }
+        // If any blocked -> fail with exact message
+        const blocked = labels.find(l => statusMap.get(l) === 'blocked');
+        if (blocked) {
+            return res.status(409).json({ status: 'fail', message: `Seat ${blocked} is blocked` });
+        }
+        // Any other non-available
+        const otherNA = labels.find(l => statusMap.get(l) && statusMap.get(l) !== 'available');
+        if (otherNA) {
+            return res.status(409).json({ status: 'fail', message: `Seat ${otherNA} not available` });
+        }
+
+        // 2) Attempt to hold for this user
+        const createdOrRefreshed = [];
+        for (const label of labels) {
+            const holdKey = `hold:show:${show_id}:${label}`;
+            const currentOwner = await redis.get(holdKey);
+
+            if (currentOwner && String(currentOwner) !== String(user_id)) {
+                return res.status(409).json({ status: 'fail', message: `Seat ${label} is already held` });
+            }
+
+            // Set/refresh hold for this user
+            await redis.set(holdKey, String(user_id), 'EX', 300);
+            createdOrRefreshed.push({ seat: label, action: currentOwner ? 'refreshed' : 'created' });
+        }
+
+        return res.status(200).json({ status: 'success', message: 'Validated and held', data: createdOrRefreshed });
+    } catch (err) {
+        console.error('❌ Error validateThenHold:', err);
+        return next(new AppError('Failed to validate and hold', 500));
     }
 });
 
@@ -221,12 +272,47 @@ exports.releaseHolds = catchAsync(async (req, res, next) => {
     }
 
     try {
-        const keys = seats.map(s => `hold:show:${show_id}:${String(s).trim().toUpperCase()}:${user_id}`);
-        // Best-effort delete
-        await redis.del(...keys);
+        // Delete hold keys for seats owned by this user
+        for (const s of seats) {
+            const label = String(s).trim().toUpperCase();
+            const holdKey = `hold:show:${show_id}:${label}`;
+            const owner = await redis.get(holdKey);
+            if (String(owner) === String(user_id)) {
+                await redis.del(holdKey);
+            }
+        }
         res.status(200).json({ status: 'success', message: 'Holds released' });
     } catch (err) {
         console.error('❌ Error releasing holds:', err);
         return next(new AppError('Failed to release holds', 500));
+    }
+});
+
+// Validate that provided seats are currently held by this user for a given show
+exports.validateHolds = catchAsync(async (req, res, next) => {
+    const { show_id, seats } = req.body;
+    const user_id = req.user.id;
+
+    if (!show_id || !Array.isArray(seats) || seats.length === 0) {
+        return next(new AppError('Invalid input', 400));
+    }
+
+    try {
+        const missing = [];
+        for (const seat of seats) {
+            const label = String(seat).trim().toUpperCase();
+            const holdKey = `hold:show:${show_id}:${label}`;
+            const owner = await redis.get(holdKey);
+            if (String(owner) !== String(user_id)) {
+                missing.push(label);
+            }
+        }
+        if (missing.length > 0) {
+            return res.status(409).json({ status: 'fail', message: 'Some seats are not held', missing });
+        }
+        return res.status(200).json({ status: 'success', ok: true });
+    } catch (err) {
+        console.error('❌ Error validating holds:', err);
+        return next(new AppError('Failed to validate holds', 500));
     }
 });

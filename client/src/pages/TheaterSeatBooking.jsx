@@ -116,72 +116,6 @@ const TheaterSeatBooking = () => {
     fetchData();
   }, [showId]);
 
-  // Calculate grid dimensions
-  useEffect(() => {
-    if (showData.layout && showData.layout.length > 0) {
-      const maxR = Math.max(...showData.layout.map(cell => cell.row));
-      const maxC = Math.max(...showData.layout.map(cell => cell.col));
-      setMaxRow(maxR);
-      setMaxCol(maxC);
-    }
-  }, [showData.layout]);
-
-  // Clamp requested seats to available seats (and 10 max)
-  useEffect(() => {
-    const cap = Math.min(10, Math.max(0, availableSeatCount));
-    setRequestedSeats(prev => {
-      // If sold out, set to 0; else clamp to cap
-      if (cap === 0) return 0;
-      return Math.min(prev || 1, cap);
-    });
-  }, [availableSeatCount]);
-
-  // Refresh seat availability
-  const refreshSeats = async () => {
-    setIsRefreshing(true);
-    try {
-      const seatsResponse = await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/show-seats/${showId}`, {
-        credentials: 'include'
-      });
-      
-      if (seatsResponse.ok) {
-        const seatsData = await seatsResponse.json();
-        if (seatsData.status === "success") {
-          const seatMap = {};
-          let availCount = 0;
-          seatsData.data.forEach(seat => {
-            seatMap[seat.seat_label] = seat.status;
-            if (seat.status === 'available') availCount += 1;
-          });
-          setSeatAvailability(seatMap);
-          setAvailableSeatCount(availCount);
-          
-          // Check if any selected seats are no longer available
-          const unavailableSeats = selectedSeats.filter(seatId => {
-            const [row, col] = seatId.split('-').map(Number);
-            const seat = showData.layout.find(s => s.row === row && s.col === col);
-            if (seat && seatMap[seat.label] && seatMap[seat.label] !== 'available') {
-              return true;
-            }
-            return false;
-          });
-          
-          if (unavailableSeats.length > 0) {
-            // Remove unavailable seats from selection
-            setSelectedSeats(selectedSeats.filter(seatId => !unavailableSeats.includes(seatId)));
-            setBookingError('Some of your selected seats are no longer available. Please select new seats.');
-            setShowBookingError(true);
-            closeTermsModal();
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Error refreshing seats:', err);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
   // Handle seat selection
   const handleSeatClick = (seat) => {
     const seatStatus = getSeatActualStatus(seat);
@@ -287,6 +221,54 @@ const TheaterSeatBooking = () => {
     };
   };
 
+  // Calculate grid dimensions
+  useEffect(() => {
+    if (showData.layout && showData.layout.length > 0) {
+      const maxR = Math.max(...showData.layout.map(cell => cell.row));
+      const maxC = Math.max(...showData.layout.map(cell => cell.col));
+      setMaxRow(maxR);
+      setMaxCol(maxC);
+    }
+  }, [showData.layout]);
+
+  // Refresh seat availability
+  const refreshSeats = async () => {
+    setIsRefreshing(true);
+    try {
+      const seatsResponse = await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/show-seats/${showId}`, {
+        credentials: 'include'
+      });
+      
+      if (seatsResponse.ok) {
+        const seatsData = await seatsResponse.json();
+        if (seatsData.status === "success") {
+          const seatMap = {};
+          let availCount = 0;
+          seatsData.data.forEach(seat => {
+            seatMap[seat.seat_label] = seat.status;
+            if (seat.status === 'available') availCount += 1;
+          });
+          setSeatAvailability(seatMap);
+          setAvailableSeatCount(availCount);
+          
+          // Remove any selected seats that became unavailable
+          const filtered = selectedSeats.filter(seatId => {
+            const [row, col] = seatId.split('-').map(Number);
+            const seat = showData.layout.find(s => s.row === row && s.col === col);
+            return seat && seatMap[seat.label] === 'available';
+          });
+          if (filtered.length !== selectedSeats.length) {
+            setSelectedSeats(filtered);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error refreshing seats:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   // Calculate total price
   const totalPrice = selectedSeats.length * (showData.price || 0);
   const ticketOptions = availableSeatCount > 0
@@ -307,30 +289,33 @@ const TheaterSeatBooking = () => {
 
   // Accept terms and proceed
   const acceptTermsAndProceed = async () => {
-    // Instead of holding here, create a payment session and redirect to dummy payment page
+    // Validate and hold seats now so user sees conflicts before payment page
     const seatLabels = selectedSeats.map(seatId => {
       const [row, col] = seatId.split('-').map(Number);
       const seat = showData.layout.find(s => s.row === row && s.col === col);
       return seat ? seat.label : seatId;
     });
 
-  try {
+    try {
       const token = localStorage.getItem('token');
       const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
       setIsBooking(true);
-      // 1) Hold seats for 5 minutes
-      const holdRes = await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/show-seats/hold`, {
+
+      // 1) Validate then hold (idempotent; refreshes TTL if already held by same user)
+      const vRes = await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/show-seats/validate-then-hold`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         credentials: 'include',
         body: JSON.stringify({ show_id: showId, seats: seatLabels })
       });
-      const holdData = await holdRes.json().catch(() => ({}));
-      if (holdRes.status === 401) {
+      const vJson = await vRes.json().catch(() => ({}));
+      if (vRes.status === 401) {
         throw new Error('Please sign in to continue with booking.');
       }
-      if (!holdRes.ok) {
-        const msg = holdData?.message || (Array.isArray(holdData?.errors) ? holdData.errors.join(', ') : '') || 'Failed to hold seats';
+      if (!vRes.ok) {
+        const serverMsg = vJson?.message || '';
+        // Normalize typical messages for clarity
+        const msg = serverMsg || 'One or more seats are not available.';
         throw new Error(msg);
       }
 
@@ -341,9 +326,12 @@ const TheaterSeatBooking = () => {
         credentials: 'include',
         body: JSON.stringify({ show_id: showId, seats: seatLabels, amount: totalPrice })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        throw new Error('Please sign in to continue with booking.');
+      }
       if (!res.ok) {
-        // Release holds immediately if payment session creation failed
+        // Best-effort: release holds we just created
         try {
           await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/show-seats/release`, {
             method: 'POST',
@@ -351,19 +339,16 @@ const TheaterSeatBooking = () => {
             credentials: 'include',
             body: JSON.stringify({ show_id: showId, seats: seatLabels })
           });
-  } catch { /* best-effort */ }
-        throw new Error(data.message || 'Failed to create payment session');
+        } catch { /* ignore */ }
+        throw new Error(data?.message || 'Failed to start payment');
       }
       setShowTermsModal(false);
-      // Optionally clear selection after moving to payment page
-      setSelectedSeats([]);
       navigate(`/pay/${data.session_id}`);
     } catch (e) {
-  // Close the review modal and show error clearly
-  setShowTermsModal(false);
-  setBookingError(e.message || 'Something went wrong while starting payment.');
-  setShowBookingError(true);
-  } finally {
+      setShowTermsModal(false);
+      setBookingError(e.message || 'Something went wrong while starting payment.');
+      setShowBookingError(true);
+    } finally {
       setIsBooking(false);
     }
   };
@@ -742,12 +727,12 @@ const TheaterSeatBooking = () => {
                 {isBooking ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Holding seats...
+                    Starting payment...
                   </>
                 ) : (
                   <>
                     <Check size={16} />
-                    Confirm & Hold Seats
+                    Continue to Payment
                   </>
                 )}
               </button>

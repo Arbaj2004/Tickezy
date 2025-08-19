@@ -4,12 +4,8 @@ const AppError = require('../utils/appError');
 
 // CREATE screen
 exports.createScreen = catchAsync(async (req, res, next) => {
-    console.log('Creating screen with body:');
     const { name, total_seats, layout } = req.body;
-    console.log('Creating screen with body:');
     const { theatreId } = req.params;
-    console.log('Creating screen with body:');
-    console.log(req.body);
 
     const result = await pool.query(
         `INSERT INTO screens (theatre_id, name, total_seats, layout)

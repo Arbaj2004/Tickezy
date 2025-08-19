@@ -20,10 +20,9 @@ exports.createBooking = catchAsync(async (req, res, next) => {
         // Step 1: Verify user holds the seats
         for (const seat of seats) {
             const seatLabel = seat.trim().toUpperCase();
-            const holdKey = `hold:show:${show_id}:seat:${seatLabel}`;
-            const holder = await redis.get(holdKey);
-
-            if (holder !== String(user_id)) {
+            const holdKey = `hold:show:${show_id}:${seatLabel}`;
+            const owner = await redis.get(holdKey);
+            if (String(owner) !== String(user_id)) {
                 throw new AppError(`Seat ${seatLabel} is not held by you or hold expired`, 403);
             }
         }
@@ -65,8 +64,11 @@ exports.createBooking = catchAsync(async (req, res, next) => {
         // Step 4: Clear Redis seat holds
         for (const seat of seats) {
             const seatLabel = seat.trim().toUpperCase();
-            const holdKey = `hold:show:${show_id}:seat:${seatLabel}`;
-            await redis.del(holdKey);
+            const holdKey = `hold:show:${show_id}:${seatLabel}`;
+            const owner = await redis.get(holdKey);
+            if (String(owner) === String(user_id)) {
+                await redis.del(holdKey);
+            }
         }
 
         res.status(201).json({

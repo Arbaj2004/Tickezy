@@ -13,7 +13,9 @@ router.get('/:showId', showSeatController.getSeatsByShow);
 router.post('/book', protect, restrictTo('User'), showSeatController.bookSeats);
 
 router.post('/hold', protect, showSeatController.holdSeats);
+router.post('/validate-then-hold', protect, showSeatController.validateThenHold);
 router.post('/release', protect, showSeatController.releaseHolds);
+router.post('/validate', protect, showSeatController.validateHolds);
 
 // User: Get current holds summary
 router.get('/me/holds', protect, showSeatController.getUserHolds);
