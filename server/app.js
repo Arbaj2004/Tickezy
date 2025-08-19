@@ -19,7 +19,6 @@ const movieRouter = require('./routes/movieRoutes');
 const showRouter = require('./routes/showRoutes');
 const showSeatController = require('./routes/showSeatRoutes');
 const bookingRouter = require('./routes/bookingRoutes');
-const paymentRouter = require('./routes/paymentRoutes');
 const errorHandler = require('./utils/errorHandler');
 const pool = require('./config/db');
 let redis; // lazy import to avoid connecting when not needed
@@ -42,7 +41,8 @@ const corsOptions = {
             if (!origin || corsOrigins.includes(origin)) {
                 return callback(null, true);
             }
-            return callback(new Error('Not allowed by CORS'));
+            // Do not throw; disable CORS for this request
+            return callback(null, false);
         }
         : true,
     credentials: true,
@@ -52,7 +52,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 // Handle CORS preflight for all routes
-app.options('*', cors(corsOptions));
+// Express 5: use RegExp for wildcard preflight handling
+app.options(/.*/, cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -75,7 +76,13 @@ app.use('/api/v1/movie', movieRouter);
 app.use('/api/v1/show', showRouter);
 app.use('/api/v1/show-seats', showSeatController);
 app.use('/api/v1/bookings', bookingRouter);
-app.use('/api/v1/payments', paymentRouter);
+if (process.env.UPSTASH_REDIS_URL || process.env.REDIS_URL || process.env.REDIS_URL_UPSTASH) {
+    // Lazy import to avoid initializing Redis when not configured
+    const paymentRouter = require('./routes/paymentRoutes');
+    app.use('/api/v1/payments', paymentRouter);
+} else {
+    console.warn('⚠️  Payments route disabled: no Redis URL configured');
+}
 
 // Lightweight health check to debug serverless issues
 app.get('/api/v1/health', async (req, res) => {

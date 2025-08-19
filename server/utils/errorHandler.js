@@ -1,6 +1,8 @@
 module.exports = (err, req, res, next) => {
-    // Log detailed error in development
-    if (process.env.NODE_ENV !== 'production') {
+    // Log errors (concise in production, detailed in dev)
+    if (process.env.NODE_ENV === 'production') {
+        console.error('❌ Error:', err && (err.stack || err.message || err));
+    } else {
         console.error('❌ Error:', err);
     }
 
