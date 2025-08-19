@@ -1,5 +1,8 @@
 module.exports = (err, req, res, next) => {
-    // console.error("Error:", err); // Log the error in the backend for debugging
+    // Log detailed error in development
+    if (process.env.NODE_ENV !== 'production') {
+        console.error('❌ Error:', err);
+    }
 
     // Set default status code and message
     err.statusCode = err.statusCode || 500;
