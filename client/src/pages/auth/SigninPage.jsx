@@ -105,12 +105,12 @@ const SigninPage = () => {
 
   const handleForgotPassword = () => {
     console.log('Forgot password clicked');
-    alert('Forgot password functionality would redirect to reset page');
+    toast('Forgot password flow coming soon');
   };
 
   const handleSocialLogin = (provider) => {
     console.log(`${provider} login clicked`);
-    alert(`${provider} login would redirect to ${provider} auth`);
+    toast(`${provider} login coming soon`);
   };
 
   return (
@@ -120,7 +120,7 @@ const SigninPage = () => {
           {/* Header */}
           <div className="text-center">
             <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h2>
-            <p className="text-gray-600">Sign in to your BookMyShow account</p>
+            <p className="text-gray-600">Sign in to your Tickezy account</p>
           </div>
 
           {/* Login Form */}

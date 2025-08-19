@@ -218,26 +218,6 @@ const MovieBookingPage = () => {
           </div>
         </div>
       )}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <button className="mr-4 p-2 hover:bg-gray-100 rounded-md">
-                <ArrowLeft className="w-5 h-5 text-gray-600" />
-              </button>
-              <h1 className="text-2xl font-bold text-pink-600">BookMyShow</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button className="p-2 hover:bg-gray-100 rounded-md">
-                <Heart className="w-5 h-5 text-gray-600" />
-              </button>
-              <button className="p-2 hover:bg-gray-100 rounded-md">
-                <Share2 className="w-5 h-5 text-gray-600" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
 
       {/* Loading State */}
       {loading && (

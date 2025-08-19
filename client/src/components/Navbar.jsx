@@ -3,6 +3,7 @@ import { Eye, EyeOff, User, Mail, Lock, Star, MapPin, Search, LogOut, Crosshair,
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux'; // 👈 import selector
 import Avatar from './Avatar';
+import { toast } from 'react-hot-toast';
 import axios from 'axios';
 import { loginSuccess, logout } from '../redux/slices/userSlice';
 
@@ -111,7 +112,7 @@ const Navbar = () => {
 
   const detectLocation = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
+      toast.error('Geolocation is not supported by your browser');
       return;
     }
     setDetecting(true);
@@ -129,7 +130,7 @@ const Navbar = () => {
       },
       (err) => {
         console.warn('Location error:', err);
-        alert('Could not determine your location. Please allow location access.');
+        toast.error('Could not determine your location. Please allow location access.');
         setDetecting(false);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
@@ -145,7 +146,7 @@ const Navbar = () => {
           {/* Logo */}
           <div className="flex items-center space-x-8">
             <div className="text-2xl font-bold text-pink-600 cursor-pointer" onClick={() => navigate('/')}>
-              BookMyShow
+              Tickezy
             </div>
 
             {/* Search Bar */}

@@ -114,7 +114,7 @@ const SignupPage = () => {
         <div className="max-w-md w-full space-y-8">
           {/* Header */}
           <div className="text-center">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Join BookMyShow</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Join Tickezy</h2>
             <p className="text-gray-600">Create your account to book tickets instantly</p>
           </div>
 
@@ -293,7 +293,7 @@ const SignupPage = () => {
 
           {/* Benefits Section */}
           <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Why join BookMyShow?</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Why join Tickezy?</h3>
             <div className="space-y-3">
               <div className="flex items-center">
                 <Star className="w-5 h-5 text-yellow-500 mr-3" />

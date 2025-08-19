@@ -187,7 +187,7 @@ const LandingPage = () => {
 
       {/* Footer */}
           <footer className="border-t border-gray-800 py-4 bg-gray-900 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 BookMyShow. All rights reserved.</p>
+            <p>&copy; 2024 Tickezy. All rights reserved.</p>
         </footer>
     </div>
   );

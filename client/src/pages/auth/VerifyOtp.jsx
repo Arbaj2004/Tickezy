@@ -46,7 +46,7 @@ const VerifyOtp = () => {
     e.preventDefault();
     e.stopPropagation();
     if (data.otp.length !== 6) {
-      alert("Please enter a valid 6-digit OTP");
+      toast.error("Please enter a valid 6-digit OTP");
       return;
     }
 
@@ -86,7 +86,7 @@ const VerifyOtp = () => {
     setTimeLeft(300);
     setCanResend(false);
     setData({ otp: "" });
-    alert("New OTP sent to your email!");
+    toast.success("New OTP sent to your email!");
   };
 
   const handleGoBack = () => {

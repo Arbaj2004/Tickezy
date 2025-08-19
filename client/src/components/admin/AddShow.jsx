@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Calendar, Clock, MapPin, Film, Monitor, DollarSign, Save, ArrowLeft, AlertCircle, Check, X } from 'lucide-react';
 import axios from 'axios';
+import { toast } from 'react-hot-toast';
 
 const CreateShowPage = ({ editData, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -242,7 +243,7 @@ const CreateShowPage = ({ editData, onSuccess }) => {
         
         if (response.data.status === 'success') {
           // Show success message
-          alert(isEditing ? 'Show updated successfully!' : 'Show created successfully!');
+          toast.success(isEditing ? 'Show updated successfully!' : 'Show created successfully!');
           
           // Call onSuccess callback if provided
           if (onSuccess) {
@@ -264,7 +265,7 @@ const CreateShowPage = ({ editData, onSuccess }) => {
         }
       } catch (error) {
         console.error('Error saving show:', error);
-        alert(error.response?.data?.message || 'Error saving show. Please try again.');
+        toast.error(error.response?.data?.message || 'Error saving show. Please try again.');
       } finally {
         setIsLoading(false);
       }
