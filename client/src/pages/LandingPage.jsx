@@ -74,6 +74,12 @@ const LandingPage = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+      <div className='flex px-2 py-2 justify-between bg-red-500 text-white'>
+        <p>Login with:</p>
+        <p>user@tickezy.com</p>
+        <p>user1@tickezy.com</p>
+        <p>password: 123456</p>
+      </div>
 
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-pink-600 to-purple-600 text-white py-16">
