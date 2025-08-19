@@ -185,16 +185,27 @@ exports.holdSeats = catchAsync(async (req, res, next) => {
             const label = seat.trim().toUpperCase();
             const holdKey = `hold:show:${show_id}:${label}`;
 
-            // Check if seat is already held
+            // Atomic check-and-set to prevent race conditions
             const currentOwner = await redis.get(holdKey);
+            
             if (currentOwner && String(currentOwner) !== String(user_id)) {
                 // Seat held by someone else
                 return next(new AppError(`Seat ${label} is already held`, 409));
             }
-
-            // Set/refresh hold for this user
-            await redis.set(holdKey, String(user_id), 'EX', 300);
-            createdOrRefreshed.push({ seat: label, action: currentOwner ? 'refreshed' : 'created' });
+            
+            if (!currentOwner) {
+                // Seat not held - try atomic create (SET with NX)
+                const created = await redis.set(holdKey, String(user_id), 'EX', 300, 'NX');
+                if (!created) {
+                    // Someone else grabbed it between our check and set
+                    return next(new AppError(`Seat ${label} is already held`, 409));
+                }
+                createdOrRefreshed.push({ seat: label, action: 'created' });
+            } else {
+                // Seat held by same user - refresh TTL
+                await redis.set(holdKey, String(user_id), 'EX', 300);
+                createdOrRefreshed.push({ seat: label, action: 'refreshed' });
+            }
         }
         res.status(200).json({ status: 'success', message: 'Seats held for 5 minutes', data: createdOrRefreshed });
     } catch (err) {
@@ -240,19 +251,32 @@ exports.validateThenHold = catchAsync(async (req, res, next) => {
             return res.status(409).json({ status: 'fail', message: `Seat ${otherNA} not available` });
         }
 
-        // 2) Attempt to hold for this user
+        // 2) Attempt to hold for this user - ATOMIC to prevent race conditions
         const createdOrRefreshed = [];
         for (const label of labels) {
             const holdKey = `hold:show:${show_id}:${label}`;
+            
+            // Try atomic check-and-set: only set if key doesn't exist OR if it belongs to same user
             const currentOwner = await redis.get(holdKey);
-
+            
             if (currentOwner && String(currentOwner) !== String(user_id)) {
+                // Seat held by someone else - fail immediately
                 return res.status(409).json({ status: 'fail', message: `Seat ${label} is already held` });
             }
-
-            // Set/refresh hold for this user
-            await redis.set(holdKey, String(user_id), 'EX', 300);
-            createdOrRefreshed.push({ seat: label, action: currentOwner ? 'refreshed' : 'created' });
+            
+            if (!currentOwner) {
+                // Seat not held - try atomic create (SET with NX)
+                const created = await redis.set(holdKey, String(user_id), 'EX', 300, 'NX');
+                if (!created) {
+                    // Someone else grabbed it between our check and set
+                    return res.status(409).json({ status: 'fail', message: `Seat ${label} is already held` });
+                }
+                createdOrRefreshed.push({ seat: label, action: 'created' });
+            } else {
+                // Seat held by same user - refresh TTL
+                await redis.set(holdKey, String(user_id), 'EX', 300);
+                createdOrRefreshed.push({ seat: label, action: 'refreshed' });
+            }
         }
 
         return res.status(200).json({ status: 'success', message: 'Validated and held', data: createdOrRefreshed });
