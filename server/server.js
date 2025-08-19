@@ -1,4 +1,10 @@
 require('dotenv').config();
+// Prefer IPv4 and public DNS to avoid local DNS/IPv6 issues
+try {
+    const dns = require('dns');
+    dns.setDefaultResultOrder('ipv4first');
+    dns.setServers(['1.1.1.1', '8.8.8.8']);
+} catch (_) { }
 const express = require('express');
 const cors = require('cors');
 const app = express();
@@ -14,6 +20,7 @@ const bookingRouter = require('./routes/bookingRoutes');
 const paymentRouter = require('./routes/paymentRoutes');
 const morgan = require('morgan');
 const errorHandler = require('./utils/errorHandler');
+const pool = require('./config/db');
 
 // You can configure it further if needed, e.g., app.use(cors({ origin: 'http://example.com' }));
 app.use(cors({
@@ -51,7 +58,16 @@ app.get("/", (request, response) => {
 // Global error handler (ensures consistent JSON responses on errors)
 app.use(errorHandler);
 
-console.log(process.env.MONGO_URL);
+// Optional: DB connectivity check on startup
+(async () => {
+    try {
+        const { rows } = await pool.query('SELECT NOW() as now');
+        console.log('🗄️  Postgres ping OK at', rows[0].now);
+    } catch (e) {
+        console.error('❌ Postgres connection failed:', e.message);
+    }
+})();
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`🚀 Tickezy backend running at http://localhost:${PORT}`);
