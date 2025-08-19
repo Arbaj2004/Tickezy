@@ -22,6 +22,7 @@ const bookingRouter = require('./routes/bookingRoutes');
 const paymentRouter = require('./routes/paymentRoutes');
 const errorHandler = require('./utils/errorHandler');
 const pool = require('./config/db');
+let redis; // lazy import to avoid connecting when not needed
 
 const app = express();
 // Behind Vercel/Proxies so req.secure and IPs work correctly
@@ -75,6 +76,41 @@ app.use('/api/v1/show', showRouter);
 app.use('/api/v1/show-seats', showSeatController);
 app.use('/api/v1/bookings', bookingRouter);
 app.use('/api/v1/payments', paymentRouter);
+
+// Lightweight health check to debug serverless issues
+app.get('/api/v1/health', async (req, res) => {
+    const info = {
+        status: 'ok',
+        node: process.version,
+        env: {
+            NODE_ENV: process.env.NODE_ENV,
+            has_DATABASE_URL: Boolean(process.env.DATABASE_URL),
+            has_UPSTASH_REDIS_URL: Boolean(process.env.UPSTASH_REDIS_URL || process.env.REDIS_URL_UPSTASH),
+            CLIENT_ORIGIN: process.env.CLIENT_ORIGIN,
+        },
+        checks: {
+            db: null,
+            redis: null,
+        },
+    };
+
+    try {
+        const { rows } = await pool.query('SELECT 1 as ok');
+        info.checks.db = rows?.[0]?.ok === 1 ? 'ok' : 'fail';
+    } catch (e) {
+        info.checks.db = `fail: ${e.message}`;
+    }
+
+    try {
+        if (!redis) redis = require('./config/redisClient');
+        const pong = await redis.ping();
+        info.checks.redis = pong === 'PONG' ? 'ok' : `fail: ${pong}`;
+    } catch (e) {
+        info.checks.redis = `fail: ${e.message}`;
+    }
+
+    res.json(info);
+});
 
 app.get('/', (request, response) => {
     response.json({ message: 'server running fine' });
