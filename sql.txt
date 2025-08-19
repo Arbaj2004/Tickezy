@@ -1,0 +1,73 @@
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(150) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(20) DEFAULT 'user',  -- 'user' | 'admin'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE movies (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    duration_minutes INT NOT NULL,
+    release_date DATE,
+    language VARCHAR(50),
+    rating VARCHAR(10),  -- e.g., "U", "UA", "A"
+    poster_url TEXT,
+    trailer_url TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE theatres (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    location TEXT NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    contact_email VARCHAR(150),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE screens (
+    id SERIAL PRIMARY KEY,
+    theatre_id INT REFERENCES theatres(id),
+    name VARCHAR(100),
+    total_seats INT,
+    layout JSONB,  -- Your full grid config here
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE shows (
+    id SERIAL PRIMARY KEY,
+    movie_id INT REFERENCES movies(id) ON DELETE CASCADE,
+    screen_id INT REFERENCES screens(id) ON DELETE CASCADE,
+    show_datetime TIMESTAMPTZ NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'active',  -- active, cancelled, expired
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE show_seats (
+    id SERIAL PRIMARY KEY,
+    show_id INT REFERENCES shows(id) ON DELETE CASCADE,
+    seat_label VARCHAR(10) NOT NULL,
+    status VARCHAR(20) DEFAULT 'available',  -- only 'booked' stored permanently
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (show_id, seat_label)
+);
+CREATE TABLE bookings (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE SET NULL,
+    show_id INT REFERENCES shows(id) ON DELETE CASCADE,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'confirmed',  -- confirmed, cancelled, failed
+    payment_id VARCHAR(100),                 -- from payment gateway (e.g., Razorpay/Stripe)
+    booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE booking_seats (
+    id SERIAL PRIMARY KEY,
+    booking_id INT REFERENCES bookings(id) ON DELETE CASCADE,
+    seat_label VARCHAR(10) NOT NULL,        -- e.g., "A1"
+    show_id INT REFERENCES shows(id) ON DELETE CASCADE
+);
+
