@@ -164,10 +164,11 @@ exports.verifyOtp = catchAsync(async (req, res, next) => {
         { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
-    // Send success response
+    // Send success response and refresh auth cookie with updated token
     const prod = process.env.NODE_ENV === 'production';
     const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
-    res.status(200).clearCookie('token', {
+    res.status(200).cookie('token', updatedToken, {
+        maxAge: 9000000,
         httpOnly: true,
         secure: prod,
         sameSite: prod ? 'none' : 'lax',

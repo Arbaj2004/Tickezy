@@ -56,8 +56,10 @@ const AdminDashboard = () => {
       const fetchUser = async () => {
         try {
           const URL = `${API_BASE_URL}/auth/me`;
+          const headers = token ? { Authorization: `Bearer ${token}` } : {};
           const response = await axios.get(URL, {
-            withCredentials: true
+            withCredentials: true,
+            headers
           });
 
           if (response.data?.data?.user) {
@@ -76,7 +78,9 @@ const AdminDashboard = () => {
   const fetchMovies = async () => {
     setLoadingStates(prev => ({ ...prev, movies: true }));
     try {
-      const response = await axios.get(`${API_BASE_URL}/movie`, { withCredentials: true });
+  const token = localStorage.getItem('token');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.get(`${API_BASE_URL}/movie`, { withCredentials: true, headers });
       if (response.data.status === "success") {
         setMovies(response.data.data || []);
       }
@@ -91,7 +95,9 @@ const AdminDashboard = () => {
   const fetchTheatres = async () => {
     setLoadingStates(prev => ({ ...prev, theatres: true }));
     try {
-      const response = await axios.get(`${API_BASE_URL}/theatre`, { withCredentials: true });
+  const token = localStorage.getItem('token');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.get(`${API_BASE_URL}/theatre`, { withCredentials: true, headers });
       if (response.data.status === "success") {
         setTheatres(response.data.data || []);
       }
@@ -107,7 +113,9 @@ const AdminDashboard = () => {
     setLoadingStates(prev => ({ ...prev, screens: true }));
     try {
       // Get all screens across all theatres
-      const response = await axios.get(`${API_BASE_URL}/theatre`, { withCredentials: true });
+  const token = localStorage.getItem('token');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.get(`${API_BASE_URL}/theatre`, { withCredentials: true, headers });
       if (response.data.status === "success") {
         const allScreens = [];
         const theatres = response.data.data || [];
@@ -115,7 +123,9 @@ const AdminDashboard = () => {
         // Fetch screens for each theatre
         for (const theatre of theatres) {
           try {
-            const screenResponse = await axios.get(`${API_BASE_URL}/theatre/${theatre.id}/screens`, { withCredentials: true });
+            const token = localStorage.getItem('token');
+            const headers = token ? { Authorization: `Bearer ${token}` } : {};
+            const screenResponse = await axios.get(`${API_BASE_URL}/theatre/${theatre.id}/screens`, { withCredentials: true, headers });
             if (screenResponse.data.status === "success" && screenResponse.data.data) {
               const theatreScreens = screenResponse.data.data.map(screen => ({
                 ...screen,
@@ -142,7 +152,9 @@ const AdminDashboard = () => {
   const fetchShows = async () => {
     setLoadingStates(prev => ({ ...prev, shows: true }));
     try {
-      const response = await axios.get(`${API_BASE_URL}/show`, { withCredentials: true });
+  const token = localStorage.getItem('token');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.get(`${API_BASE_URL}/show`, { withCredentials: true, headers });
       if (response.data.status === "success") {
         const showsData = response.data.data || [];
         // The backend now returns all necessary data including theatre_id, movie_title, theatre_name, screen_name
@@ -159,7 +171,9 @@ const AdminDashboard = () => {
   const fetchAnalytics = async () => {
     setLoadingAnalytics(true);
     try {
-      const res = await axios.get(`${API_BASE_URL}/bookings/analytics`, { withCredentials: true });
+  const token = localStorage.getItem('token');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await axios.get(`${API_BASE_URL}/bookings/analytics`, { withCredentials: true, headers });
       if (res.data.status === 'success') setAnalytics(res.data.data);
     } catch (e) {
       toast.error('Failed to load analytics');
@@ -173,7 +187,9 @@ const AdminDashboard = () => {
     if (!window.confirm("Are you sure you want to delete this movie?")) return;
     
     try {
-      const response = await axios.delete(`${API_BASE_URL}/movie/${movieId}`, { withCredentials: true });
+  const token = localStorage.getItem('token');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.delete(`${API_BASE_URL}/movie/${movieId}`, { withCredentials: true, headers });
       if (response.data.status === "success") {
         toast.success("Movie deleted successfully");
         fetchMovies(); // Refresh list
@@ -188,7 +204,9 @@ const AdminDashboard = () => {
     if (!window.confirm("Are you sure you want to delete this theatre?")) return;
     
     try {
-      const response = await axios.delete(`${API_BASE_URL}/theatre/${theatreId}`, { withCredentials: true });
+  const token = localStorage.getItem('token');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.delete(`${API_BASE_URL}/theatre/${theatreId}`, { withCredentials: true, headers });
       if (response.data.status === "success") {
         toast.success("Theatre deleted successfully");
         fetchTheatres(); // Refresh list
@@ -203,7 +221,9 @@ const AdminDashboard = () => {
     if (!window.confirm("Are you sure you want to delete this screen?")) return;
     
     try {
-      const response = await axios.delete(`${API_BASE_URL}/screen/${screenId}`, { withCredentials: true });
+  const token = localStorage.getItem('token');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.delete(`${API_BASE_URL}/screen/${screenId}`, { withCredentials: true, headers });
       if (response.data.status === "success") {
         toast.success("Screen deleted successfully");
         fetchScreens(); // Refresh list
@@ -218,7 +238,9 @@ const AdminDashboard = () => {
     if (!window.confirm("Are you sure you want to delete this show?")) return;
     
     try {
-      const response = await axios.delete(`${API_BASE_URL}/show/${showId}`, { withCredentials: true });
+  const token = localStorage.getItem('token');
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await axios.delete(`${API_BASE_URL}/show/${showId}`, { withCredentials: true, headers });
       if (response.data.status === "success") {
         toast.success("Show deleted successfully");
         fetchShows(); // Refresh list

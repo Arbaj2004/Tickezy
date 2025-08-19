@@ -315,11 +315,13 @@ const TheaterSeatBooking = () => {
     });
 
   try {
+      const token = localStorage.getItem('token');
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
       setIsBooking(true);
       // 1) Hold seats for 5 minutes
       const holdRes = await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/show-seats/hold`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         credentials: 'include',
         body: JSON.stringify({ show_id: showId, seats: seatLabels })
       });
@@ -335,7 +337,7 @@ const TheaterSeatBooking = () => {
       // 2) Create payment session
       const res = await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/payments/session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         credentials: 'include',
         body: JSON.stringify({ show_id: showId, seats: seatLabels, amount: totalPrice })
       });
@@ -345,7 +347,7 @@ const TheaterSeatBooking = () => {
         try {
           await fetch(`${import.meta.env.VITE_REACT_APP_BACKEND_BASEURL}/show-seats/release`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
             credentials: 'include',
             body: JSON.stringify({ show_id: showId, seats: seatLabels })
           });

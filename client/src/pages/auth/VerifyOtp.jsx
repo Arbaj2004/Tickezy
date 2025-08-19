@@ -61,16 +61,17 @@ const VerifyOtp = () => {
       });
 
       if (response.data.status === "success") {
-        //const userData = response.data.data.oldUser;
-        //dispatch(loginSuccess(userData));
-        localStorage.removeItem('token')
+        // Replace temporary token with the verified token
+        const newToken = response.data.token;
+        if (newToken) {
+          localStorage.setItem('token', newToken);
+        }
         toast.success("Email verification successful!");
         setData({ otp: "" });
         setTimeout(() => {
           setData({ password: "", email: "" });
         }, 2000);
         localStorage.removeItem("authTokenInsertedAt");
-
         navigate('/');
       }
     } catch (error) {

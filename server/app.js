@@ -34,11 +34,28 @@ const corsOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
     .map((s) => s.trim())
     .filter(Boolean);
 
+// Also allow common Vercel preview/prod domains in production by default
+const vercelOriginRegexes = [
+    /\.vercel\.app$/i,
+    /https?:\/\/.*-.*-.*\.vercel\.app$/i,
+];
+
+function isAllowedOrigin(origin) {
+    if (!origin) return true; // non-browser clients
+    if (corsOrigins.includes(origin)) return true;
+    try {
+        const { hostname } = new URL(origin);
+        return vercelOriginRegexes.some((re) => re.test(origin) || re.test(hostname));
+    } catch {
+        return false;
+    }
+}
+
 const corsOptions = {
     origin: isProd
         ? function (origin, callback) {
             // Allow non-browser clients (no origin) and configured origins
-            if (!origin || corsOrigins.includes(origin)) {
+            if (!origin || isAllowedOrigin(origin)) {
                 return callback(null, true);
             }
             // Do not throw; disable CORS for this request
